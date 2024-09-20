@@ -28,12 +28,14 @@ pub fn build(b: *std.Build) void {
     run_step.dependOn(&run_cmd.step);
 
     // tests
+    const build_riscv_tests = b.addSystemCommand(&.{ "make", "-C", "riscv-tests/isa" });
     const exe_unit_tests = b.addTest(.{
         .root_source_file = b.path("src/main.zig"),
         .target = target,
         .optimize = optimize,
     });
     const run_exe_unit_tests = b.addRunArtifact(exe_unit_tests);
+    run_exe_unit_tests.step.dependOn(&build_riscv_tests.step);
 
     // run tests
     const test_step = b.step("test", "Run unit tests");
