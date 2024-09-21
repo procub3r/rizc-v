@@ -49,13 +49,14 @@ pub const Core = struct {
     x: [32]i32, // registers
     pc: i32, // program counter
     instr_raw: u32 = 0, // current instruction
+    csr: [4096]i32, // control and status registers
     memory: []u8,
 
     const Self = @This();
 
     /// Create a core
     pub fn init(memory: []u8) Self {
-        return Self{ .x = .{0} ** 32, .pc = 0, .memory = memory };
+        return Self{ .x = .{0} ** 32, .csr = .{0} ** 4096, .pc = 0, .memory = memory };
     }
 
     /// Dump the architectural state of the core
@@ -247,7 +248,63 @@ pub const Core = struct {
             // fence is a nop cause memory reads and writes are emulated in order.
             // pause (under the fence opcode) is also a nop
             .fence => {},
-            .system => {}, // nop for now
+            .system => {
+                const instr: InstrI = @bitCast(self.instr_raw);
+                switch (instr.funct3) {
+                    0b000 => {
+                        switch (instr.i0_11) {
+                            0b000000000000 => {}, // ecall
+                            0b000000000001 => {}, // ebreak
+                            else => self.illegalInstr(),
+                        }
+                    },
+                    // Zicsr extension
+                    // TODO: Implement csrRead() and csrWrite() instead of directly reading and writing csrs
+                    0b001 => { // csrrw
+                        const initial_rs1 = self.reg(instr.rs1);
+                        // If rd=x0, then the instruction shall not read the CSR and shall
+                        // not cause any of the side effects that might occur on a CSR read.
+                        if (instr.rd != 0) self.x[instr.rd] = self.csr[instr.i0_11];
+                        self.csr[instr.i0_11] = initial_rs1;
+                    },
+                    // For both CSRRS and CSRRC, if rs1=x0, then the instruction will not write to the
+                    // CSR at all, and so shall not cause any of the side effects that might otherwise occur
+                    // on a CSR write, nor raise illegal-instruction exceptions on accesses to read-only CSRs
+                    0b010 => { // csrrs
+                        const initial_rs1 = self.reg(instr.rs1);
+                        self.x[instr.rd] = self.csr[instr.i0_11];
+                        // Any bit that is high in rs1 will cause the corresponding
+                        // bit to be set in the CSR, (TODO:) if that CSR bit is writable.
+                        if (instr.rs1 != 0) self.csr[instr.i0_11] |= initial_rs1;
+                    },
+                    0b011 => { // csrrc
+                        const initial_rs1 = self.reg(instr.rs1);
+                        self.x[instr.rd] = self.csr[instr.i0_11];
+                        // Any bit that is high in rs1 will cause the corresponding
+                        // bit to be cleared in the CSR, (TODO:) if that CSR bit is writable.
+                        if (instr.rs1 != 0) self.csr[instr.i0_11] &= ~initial_rs1;
+                    },
+                    0b101 => { // csrrwi
+                        // If rd=x0, then the instruction shall not read the CSR and shall
+                        // not cause any of the side effects that might occur on a CSR read.
+                        if (instr.rd != 0) self.x[instr.rd] = self.csr[instr.i0_11];
+                        self.csr[instr.i0_11] = instr.rs1;
+                    },
+                    0b110 => { // csrrsi
+                        self.x[instr.rd] = self.csr[instr.i0_11];
+                        // Any bit that is high in rs1 will cause the corresponding
+                        // bit to be set in the CSR, (TODO:) if that CSR bit is writable.
+                        if (instr.rs1 != 0) self.csr[instr.i0_11] |= instr.rs1;
+                    },
+                    0b111 => { // csrrci
+                        self.x[instr.rd] = self.csr[instr.i0_11];
+                        // Any bit that is high in rs1 will cause the corresponding
+                        // bit to be cleared in the CSR, (TODO:) if that CSR bit is writable.
+                        if (instr.rs1 != 0) self.csr[instr.i0_11] &= ~instr.rs1;
+                    },
+                    else => self.illegalInstr(),
+                }
+            },
         }
         self.pc +%= 4; // increment pc
     }
