@@ -4,7 +4,8 @@ A RISC-V emulator written in Zig with the goal of running Linux.
 
 ## Dependencies
 
-Grab `riscv64-elf-*.tar.gz` from [riscv-gnu-toolchain](https://github.com/riscv-collab/riscv-gnu-toolchain) releases and add it to PATH to build tests.
+- Grab `riscv64-elf-*.tar.gz` from [riscv-gnu-toolchain](https://github.com/riscv-collab/riscv-gnu-toolchain) releases and add the `bin/` folder to PATH to build tests.
+- Install `libmpc` if you don't already have it (non devel package is fine). Required by riscv-gnu-toolchain to build the tests.
 
 ## Build, Run and Test
 
@@ -19,7 +20,7 @@ zig build test # To run tests
 
 - [x] Unprivileged RV32I core
 - [ ] Put tests in place
-    - Try to compile tests with `build.zig` instead of `riscv-gnu-toolchain`
+    - [ ] Try to compile tests with `build.zig` instead of `riscv-gnu-toolchain`
 - [ ] MAFD extensions
 - [ ] Privileged RV32I core
 - [ ] Port OpenSBI
