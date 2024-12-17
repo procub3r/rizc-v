@@ -90,6 +90,7 @@ pub const Core = struct {
 
     /// Read register unsigned. Reads to x0 return 0
     fn regUnsigned(self: *Self, i: u5) u32 {
+        if (i == 0) return 0;
         return @bitCast(self.reg(i));
     }
 
