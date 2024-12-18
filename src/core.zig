@@ -43,6 +43,27 @@ fn immediate(instr: anytype) i32 {
     return @as(std.meta.Int(.signed, @bitSizeOf(@TypeOf(imm))), @bitCast(imm));
 }
 
+/// Memory bus interface
+pub const Bus = struct {
+    const Self = @This();
+    readByte: *const fn (self: *Self, addr: u32) error{InaccessibleAddress}!u8,
+    writeByte: *const fn (self: *Self, addr: u32, byte: u8) error{InaccessibleAddress}!void,
+
+    pub fn read(self: *Self, comptime T: type, addr: u32) error{InaccessibleAddress}!T {
+        var buf: [@sizeOf(T)]u8 = undefined;
+        for (0..@sizeOf(T)) |i| {
+            buf[i] = try self.readByte(self, addr + @as(u32, @intCast(i)));
+        }
+        return std.mem.bytesToValue(T, &buf);
+    }
+
+    pub fn write(self: *Self, addr: u32, value: anytype) error{InaccessibleAddress}!void {
+        for (std.mem.toBytes(value), 0..) |byte, i| {
+            try self.writeByte(self, addr + @as(u32, @intCast(i)), byte);
+        }
+    }
+};
+
 /// Unprivileged single-hart RV32I core
 /// with XLEN = 32, ILEN = 32
 pub const Core = struct {
@@ -50,13 +71,13 @@ pub const Core = struct {
     pc: i32, // program counter
     instr_raw: u32 = 0, // current instruction
     csr: [4096]i32, // control and status registers
-    memory: []u8,
+    bus: *Bus, // Memory bus interface
 
     const Self = @This();
 
     /// Create a core
-    pub fn init(memory: []u8) Self {
-        return Self{ .x = .{0} ** 32, .csr = .{0} ** 4096, .pc = 0, .memory = memory };
+    pub fn init(bus: *Bus) Self {
+        return Self{ .x = .{0} ** 32, .csr = .{0} ** 4096, .pc = 0, .bus = bus };
     }
 
     /// Dump the architectural state of the core
@@ -72,14 +93,15 @@ pub const Core = struct {
     }
 
     /// Load a value of type T from memory[addr]
-    fn load(self: *Self, comptime T: type, addr: u32) T {
-        return std.mem.bytesAsValue(T, self.memory[addr .. addr + @sizeOf(T)]).*;
+    fn load(self: *Self, comptime T: type, addr: u32) error{InaccessibleAddress}!T {
+        // TODO: Generate exception on error.InaccessibleAddress
+        return self.bus.read(T, addr);
     }
 
     /// Store a value of type T to memory[addr]
-    fn store(self: *Self, addr: u32, value: anytype) void {
-        const T = @TypeOf(value);
-        std.mem.bytesAsValue(T, self.memory[addr .. addr + @sizeOf(T)]).* = value;
+    fn store(self: *Self, addr: u32, value: anytype) error{InaccessibleAddress}!void {
+        // TODO: Generate exception on error.InaccessibleAddress
+        try self.bus.write(addr, value);
     }
 
     /// Read register value. Reads to x0 return 0
@@ -116,9 +138,9 @@ pub const Core = struct {
     }
 
     /// Step through the next instruction
-    pub fn step(self: *Self) void {
+    pub fn step(self: *Self) !void {
         // Fetch raw 32 bit instruction from memory
-        self.instr_raw = self.load(u32, @bitCast(self.pc));
+        self.instr_raw = try self.load(u32, @bitCast(self.pc));
 
         // Encodings with bits [15:0] all zeros are defined as illegal instructions.
         // The encoding with bits [ILEN-1:0] all ones is also illegal.
@@ -178,11 +200,11 @@ pub const Core = struct {
                 const instr: InstrI = @bitCast(self.instr_raw);
                 const addr: u32 = @bitCast(immediate(instr) +% self.reg(instr.rs1));
                 self.x[instr.rd] = switch (instr.funct3) {
-                    0b000 => self.load(i8, addr), // lb
-                    0b001 => self.load(i16, addr), // lh
-                    0b010 => self.load(i32, addr), // lw
-                    0b100 => self.load(u8, addr), // lbu
-                    0b101 => self.load(u16, addr), // lhu
+                    0b000 => try self.load(i8, addr), // lb
+                    0b001 => try self.load(i16, addr), // lh
+                    0b010 => try self.load(i32, addr), // lw
+                    0b100 => try self.load(u8, addr), // lbu
+                    0b101 => try self.load(u16, addr), // lhu
                     else => self.illegalInstr(),
                 };
             },
@@ -190,9 +212,9 @@ pub const Core = struct {
                 const instr: InstrS = @bitCast(self.instr_raw);
                 const addr: u32 = @bitCast(immediate(instr) +% self.reg(instr.rs1));
                 switch (instr.funct3) {
-                    0b000 => self.store(addr, @as(u8, @truncate(self.regUnsigned(instr.rs2)))), // sb
-                    0b001 => self.store(addr, @as(u16, @truncate(self.regUnsigned(instr.rs2)))), // sh
-                    0b010 => self.store(addr, self.reg(instr.rs2)), // sw
+                    0b000 => try self.store(addr, @as(u8, @truncate(self.regUnsigned(instr.rs2)))), // sb
+                    0b001 => try self.store(addr, @as(u16, @truncate(self.regUnsigned(instr.rs2)))), // sh
+                    0b010 => try self.store(addr, self.reg(instr.rs2)), // sw
                     else => self.illegalInstr(),
                 }
             },
