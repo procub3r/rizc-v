@@ -193,7 +193,7 @@ pub const Core = struct {
                     else => self.illegalInstr(),
                 };
                 if (!condition) break :branch; // don't branch if the condition fails
-                self.jump(immediate(instr));
+                self.jump(self.pc +% immediate(instr));
                 return; // return here to avoid incrementing pc at the end
             },
             .load => {
