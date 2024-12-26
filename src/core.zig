@@ -82,13 +82,13 @@ pub const Core = struct {
 
     /// Dump the architectural state of the core
     pub fn dump(self: *Self) void {
-        std.debug.print("---\npc = 0x{x:0>8}\n", .{self.pcUnsigned()});
-        var i: u5 = 0;
-        while (i < 16) : (i += 1) {
+        std.debug.print("pc = 0x{x:0>8}\n", .{self.pcUnsigned()});
+        for (0..32) |i| {
             std.debug.print(
-                "x{d:<2}= 0x{x:0>8}  " ** 2 ++ "\n",
-                .{ i, self.regUnsigned(i), 16 + i, self.regUnsigned(16 + i) },
+                "x{d:<2}= 0x{x:0>8}  ",
+                .{ i, self.regUnsigned(@intCast(i)) },
             );
+            if (i % 8 == 7) std.debug.print("\n", .{});
         }
     }
 
