@@ -1,4 +1,5 @@
 const std = @import("std");
+const EEI = @import("eei.zig").EEI;
 
 /// Opcode types
 const Opcode = enum(u7) {
@@ -43,27 +44,6 @@ fn immediate(instr: anytype) i32 {
     return @as(std.meta.Int(.signed, @bitSizeOf(@TypeOf(imm))), @bitCast(imm));
 }
 
-/// Memory bus interface
-pub const Bus = struct {
-    const Self = @This();
-    readByte: *const fn (self: *Self, addr: u32) error{InaccessibleAddress}!u8,
-    writeByte: *const fn (self: *Self, addr: u32, byte: u8) error{InaccessibleAddress}!void,
-
-    pub fn read(self: *Self, comptime T: type, addr: u32) error{InaccessibleAddress}!T {
-        var buf: [@sizeOf(T)]u8 = undefined;
-        for (0..@sizeOf(T)) |i| {
-            buf[i] = try self.readByte(self, addr + @as(u32, @intCast(i)));
-        }
-        return std.mem.bytesToValue(T, &buf);
-    }
-
-    pub fn write(self: *Self, addr: u32, value: anytype) error{InaccessibleAddress}!void {
-        for (std.mem.toBytes(value), 0..) |byte, i| {
-            try self.writeByte(self, addr + @as(u32, @intCast(i)), byte);
-        }
-    }
-};
-
 /// Unprivileged single-hart RV32I core
 /// with XLEN = 32, ILEN = 32
 pub const Core = struct {
@@ -71,13 +51,13 @@ pub const Core = struct {
     pc: i32, // program counter
     instr_raw: u32 = 0, // current instruction
     csr: [4096]i32, // control and status registers
-    bus: *Bus, // Memory bus interface
+    eei: *EEI, // Execution Environment Interface
 
     const Self = @This();
 
     /// Create a core
-    pub fn init(bus: *Bus) Self {
-        return Self{ .x = .{0} ** 32, .csr = .{0} ** 4096, .pc = 0, .bus = bus };
+    pub fn init(eei: *EEI) Self {
+        return Self{ .x = .{0} ** 32, .csr = .{0} ** 4096, .pc = 0, .eei = eei };
     }
 
     /// Dump the architectural state of the core
@@ -95,13 +75,13 @@ pub const Core = struct {
     /// Load a value of type T from memory[addr]
     fn load(self: *Self, comptime T: type, addr: u32) error{InaccessibleAddress}!T {
         // TODO: Generate exception on error.InaccessibleAddress
-        return self.bus.read(T, addr);
+        return self.eei.readByte(T, addr);
     }
 
     /// Store a value of type T to memory[addr]
     fn store(self: *Self, addr: u32, value: anytype) error{InaccessibleAddress}!void {
         // TODO: Generate exception on error.InaccessibleAddress
-        try self.bus.write(addr, value);
+        try self.eei.writeByte(addr, value);
     }
 
     /// Read register value. Reads to x0 return 0
