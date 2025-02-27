@@ -2,6 +2,9 @@
 
 A RISC-V emulator written in Zig with the goal of running Linux.
 
+## This repo has been ARCHIVED on 27 Feb 2025.
+## This has been a great run but this project has been restarted at [procub3r/riscv-emu](https://github.com/procub3r/riscv-emu).
+
 ## Dependencies
 
 - Grab `riscv64-elf-*.tar.gz` from [riscv-gnu-toolchain](https://github.com/riscv-collab/riscv-gnu-toolchain) releases and add the `bin/` folder to PATH to build tests.
